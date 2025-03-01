@@ -14,7 +14,12 @@ module JwtAuthenticatable
     if token
       begin
         @decoded = AuthenticationService.decode_token(token)
-        @current_user = User.find(@decoded['user_id'])
+        if @decoded
+          @current_user = User.find(@decoded['user_id'])
+        else
+          render json: { errors: ['Invalid token'] }, status: :unauthorized
+          return
+        end
       rescue JWT::DecodeError
         render json: { errors: ['Invalid token'] }, status: :unauthorized
       rescue ActiveRecord::RecordNotFound

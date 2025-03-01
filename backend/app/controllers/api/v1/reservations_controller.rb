@@ -5,7 +5,15 @@ module Api
       skip_before_action :authenticate_user, only: [:index]
 
       def index
-        reservations = Reservation.all
+        if params[:date].present?
+          # Filter reservations by date
+          reservations = Reservation.where(date: params[:date])
+          Rails.logger.info("Filtered reservations for date #{params[:date]}: #{reservations.count} found")
+        else
+          # Return all reservations if no date filter
+          reservations = Reservation.all
+        end
+        
         render json: ReservationSerializer.new(reservations).serializable_hash
       end
 

@@ -23,6 +23,7 @@ Rails.application.routes.draw do
 
     namespace :v1 do
       resources :reservations
+      get 'reservations/by_date/:date', to: 'reservations#index'
       get 'user', to: 'users#show'
     end
   end
