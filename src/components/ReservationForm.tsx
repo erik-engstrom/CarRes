@@ -34,6 +34,10 @@ const ReservationForm: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [currentReservation, setCurrentReservation] = useState<Reservation | null>(null);
   
+  // Delete confirmation modal state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [reservationToDelete, setReservationToDelete] = useState<number | null>(null);
+  
   // Replace isEditing with a more explicit formMode state
   type FormMode = 'CREATE' | 'EDIT';
   const [formMode, setFormMode] = useState<FormMode>('CREATE');
@@ -388,90 +392,104 @@ const ReservationForm: React.FC = () => {
     return slot.available ? formattedTime : `${formattedTime} (Unavailable)`;
   };
 
+  // Add a function to handle reservation deletion that can be used in multiple places
+  const handleDeleteReservation = async (id: number) => {
+    try {
+      setLoading(true);
+      await reservationApi.delete(id);
+      
+      // Update the list of reservations after deletion
+      const formattedDate = selectedDateStr ? selectedDateStr : '';
+      if (formattedDate) {
+        try {
+          // Remove this date from fetchedDatesRef to force a refresh next time
+          if (fetchedDatesRef.current.has(formattedDate)) {
+            fetchedDatesRef.current.delete(formattedDate);
+          }
+          
+          // Use a fresh API call without relying on the cache
+          const updatedReservations = await reservationApi.getByDate(formattedDate);
+          console.log('Refreshed reservations after deletion:', updatedReservations);
+          setExistingReservations(updatedReservations);
+          
+          // Reset form if we deleted the current reservation
+          if (currentReservation && currentReservation.id === id) {
+            setFormMode('CREATE');
+            setCurrentReservation(null);
+            setStartTime('');
+            setEndTime('');
+          }
+          
+          // Update available time slots
+          const availableSlots = generateAvailableTimeSlots(updatedReservations);
+          setAvailableTimeSlots(availableSlots);
+          console.log('Available time slots refreshed after deletion');
+        } catch (fetchErr) {
+          console.error('Failed to refresh reservations after deletion:', fetchErr);
+        }
+      }
+      
+      setLoading(false);
+      setSuccessMessage('Reservation deleted successfully!');
+      
+      // Automatically clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
+    } catch (err) {
+      console.error('Error deleting reservation:', err);
+      setError('Failed to delete reservation');
+      setLoading(false);
+      
+      // Try to refresh the reservations list anyway
+      if (selectedDateStr) {
+        try {
+          const formattedDate = selectedDateStr;
+          
+          // Remove this date from fetchedDatesRef to force a refresh next time
+          if (fetchedDatesRef.current.has(formattedDate)) {
+            fetchedDatesRef.current.delete(formattedDate);
+          }
+          
+          // Use a fresh API call without relying on the cache
+          const updatedReservations = await reservationApi.getByDate(formattedDate);
+          console.log('Refreshed reservations after deletion error:', updatedReservations);
+          setExistingReservations(updatedReservations);
+          
+          // Also refresh available time slots
+          const availableSlots = generateAvailableTimeSlots(updatedReservations);
+          setAvailableTimeSlots(availableSlots);
+        } catch (fetchErr) {
+          console.error('Failed to refresh reservations after deletion error:', fetchErr);
+        }
+      }
+    } finally {
+      // Reset delete modal state
+      setIsDeleteModalOpen(false);
+      setReservationToDelete(null);
+    }
+  };
+
   // Render existing reservations
   const renderExistingReservations = () => {
     if (existingReservations.length === 0) {
       return <p className="text-gray-500 mt-4">No reservations for this date.</p>;
     }
 
-    // Handle reservation deletion
-    const handleDelete = async (id: number) => {
-      try {
-        if (window.confirm('Are you sure you want to delete this reservation?')) {
-          setLoading(true);
-          await reservationApi.delete(id);
-          
-          // Update the list of reservations after deletion
-          const formattedDate = selectedDateStr ? selectedDateStr : '';
-          if (formattedDate) {
-            try {
-              // Remove this date from fetchedDatesRef to force a refresh next time
-              if (fetchedDatesRef.current.has(formattedDate)) {
-                fetchedDatesRef.current.delete(formattedDate);
-              }
-              
-              // Use a fresh API call without relying on the cache
-              const updatedReservations = await reservationApi.getByDate(formattedDate);
-              console.log('Refreshed reservations after deletion:', updatedReservations);
-              setExistingReservations(updatedReservations);
-              
-              // Reset form if we deleted the current reservation
-              if (currentReservation && currentReservation.id === id) {
-                setFormMode('CREATE');
-                setCurrentReservation(null);
-                setStartTime('');
-                setEndTime('');
-              }
-              
-              // Update available time slots
-              const availableSlots = generateAvailableTimeSlots(updatedReservations);
-              setAvailableTimeSlots(availableSlots);
-              console.log('Available time slots refreshed after deletion');
-            } catch (fetchErr) {
-              console.error('Failed to refresh reservations after deletion:', fetchErr);
-            }
-          }
-          
-          setLoading(false);
-          setSuccessMessage('Reservation deleted successfully!');
-          
-          // Automatically clear success message after 5 seconds
-          setTimeout(() => {
-            setSuccessMessage('');
-          }, 5000);
-        }
-      } catch (err) {
-        console.error('Error deleting reservation:', err);
-        setError('Failed to delete reservation');
-        setLoading(false);
-        
-        // Try to refresh the reservations list anyway
-        if (selectedDateStr) {
-          try {
-            const formattedDate = selectedDateStr;
-            
-            // Remove this date from fetchedDatesRef to force a refresh next time
-            if (fetchedDatesRef.current.has(formattedDate)) {
-              fetchedDatesRef.current.delete(formattedDate);
-            }
-            
-            // Use a fresh API call without relying on the cache
-            const updatedReservations = await reservationApi.getByDate(formattedDate);
-            console.log('Refreshed reservations after deletion error:', updatedReservations);
-            setExistingReservations(updatedReservations);
-            
-            // Also refresh available time slots
-            const availableSlots = generateAvailableTimeSlots(updatedReservations);
-            setAvailableTimeSlots(availableSlots);
-          } catch (fetchErr) {
-            console.error('Failed to refresh reservations after deletion error:', fetchErr);
-          }
-        }
-      }
+    // Open delete confirmation modal
+    const confirmDelete = (id: number) => {
+      setReservationToDelete(id);
+      setIsDeleteModalOpen(true);
     };
 
     // Get current user email
     const userEmail = localStorage.getItem('user_email');
+    
+    // Sort reservations by start time
+    const sortedReservations = [...existingReservations].sort((a, b) => {
+      // Compare start times
+      return a.start_time.localeCompare(b.start_time);
+    });
     
     return (
       <div className="mt-6" ref={existingReservationsRef}>
@@ -487,7 +505,7 @@ const ReservationForm: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {existingReservations.map((reservation) => (
+              {sortedReservations.map((reservation) => (
                 <tr 
                   key={reservation.id} 
                   className={`${lastUpdatedId === reservation.id ? 'bg-green-50 transition-colors duration-1000' : ''}`}
@@ -528,7 +546,7 @@ const ReservationForm: React.FC = () => {
                           Edit
                         </button>
                         <button
-                          onClick={() => handleDelete(reservation.id)}
+                          onClick={() => confirmDelete(reservation.id)}
                           className="text-red-600 hover:text-red-900"
                         >
                           Delete
@@ -768,6 +786,58 @@ const ReservationForm: React.FC = () => {
           </>
         )}
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 overflow-y-auto z-50">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+            
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg className="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">Delete Reservation</h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Are you sure you want to delete this reservation? This action cannot be undone.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => reservationToDelete !== null && handleDeleteReservation(reservationToDelete)}
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => {
+                    setIsDeleteModalOpen(false);
+                    setReservationToDelete(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
