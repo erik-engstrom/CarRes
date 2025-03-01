@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, parseISO, isWithinInterval, isValid } from 'date-fns';
 import reservationApi, { Reservation } from '../services/api';
+import ROUTES from '../utils/routes';
 
 const Calendar: React.FC = () => {
   const navigate = useNavigate();
@@ -42,14 +43,28 @@ const Calendar: React.FC = () => {
   }, [currentMonth]);
 
   const onDateClick = (day: Date) => {
-    if (!isValid(day)) {
-      console.error('Invalid date selected');
+    // Only allow selecting dates that are today or in the future
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (day < today) {
+      console.log('Cannot select dates in the past');
       return;
     }
-
+    
+    // Set the selected date
     setSelectedDate(day);
+    
+    // Format the date for the URL
     const formattedDate = format(day, 'yyyy-MM-dd');
-    navigate(`/reservation/${formattedDate}`);
+    console.log('Navigating to reservation form with date:', formattedDate);
+    
+    // Navigate to the reservation form with the selected date
+    navigate(ROUTES.RESERVATION_WITH_DATE(formattedDate), {
+      state: { 
+        selectedDate: formattedDate
+      }
+    });
   };
 
   const getReservationCount = (dateStr: string): number => {
@@ -165,38 +180,49 @@ const Calendar: React.FC = () => {
 
   const renderReservationsTable = () => {
     try {
+      // Get reservations for the current month
       const monthStart = startOfMonth(currentMonth);
       const monthEnd = endOfMonth(currentMonth);
       
-      const currentMonthReservations = reservations.filter(reservation => {
+      const filteredReservations = reservations.filter(reservation => {
         try {
           const reservationDate = parseISO(reservation.date);
-          return isValid(reservationDate) && isWithinInterval(reservationDate, { start: monthStart, end: monthEnd });
+          return isWithinInterval(reservationDate, { start: monthStart, end: monthEnd });
         } catch (e) {
           console.error('Error filtering reservation:', e);
           return false;
         }
       });
-
+      
       // Sort reservations by date and time
-      const sortedReservations = [...currentMonthReservations].sort((a, b) => {
-        try {
-          const dateA = parseISO(a.date);
-          const dateB = parseISO(b.date);
-          return dateA.getTime() - dateB.getTime();
-        } catch (e) {
-          console.error('Error sorting reservations:', e);
-          return 0;
+      const sortedReservations = [...filteredReservations].sort((a, b) => {
+        const dateA = parseISO(a.date);
+        const dateB = parseISO(b.date);
+        if (isSameDay(dateA, dateB)) {
+          return a.start_time.localeCompare(b.start_time);
         }
+        return dateA.getTime() - dateB.getTime();
       });
-
+      
+      if (sortedReservations.length === 0) {
+        return (
+          <div className="mt-8">
+            <div className="bg-white shadow-md rounded-2xl p-6 text-center">
+              <p className="text-gray-500">No reservations for this month.</p>
+            </div>
+          </div>
+        );
+      }
+      
       return (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold mb-4">Reservations for {format(currentMonth, 'MMMM yyyy')}</h2>
-          {sortedReservations.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No reservations for this month</p>
-          ) : (
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="bg-white shadow-md rounded-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-800">
+                Reservations for {format(currentMonth, 'MMMM yyyy')}
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -232,7 +258,12 @@ const Calendar: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <button
-                          onClick={() => navigate(`/reservation/${reservation.date}`)}
+                          onClick={() => navigate(ROUTES.RESERVATION_WITH_DATE(reservation.date), {
+                            state: {
+                              reservation: 'edit',
+                              selectedDate: reservation.date
+                            }
+                          })}
                           className="text-primary-600 hover:text-primary-900 mr-4"
                         >
                           Edit
@@ -243,7 +274,7 @@ const Calendar: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          )}
+          </div>
         </div>
       );
     } catch (e) {
@@ -259,36 +290,22 @@ const Calendar: React.FC = () => {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-800">Select a Date</h1>
-        <div className="space-x-3">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl text-sm font-medium text-white bg-indigo-500 hover:bg-indigo-600 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-1 focus:ring-indigo-400"
-          >
-            My Reservations
-          </button>
-          <button
-            onClick={() => navigate('/')}
-            className="inline-flex items-center px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-1 focus:ring-indigo-400"
-          >
-            Back to Home
-          </button>
-        </div>
+    <div className="p-4 sm:p-8 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Select a Date</h1>
       </div>
       
       {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-500 rounded-xl border border-red-100 text-sm">
+        <div className="mb-6 p-3 sm:p-4 bg-red-50 text-red-500 rounded-xl border border-red-100 text-sm">
           {error}
         </div>
       )}
       
-      <div className="bg-white shadow-md rounded-2xl p-8 transition-all duration-200 ease-in-out">
+      <div className="bg-white shadow-md rounded-2xl p-4 sm:p-8 transition-all duration-200 ease-in-out">
         {renderHeader()}
         {renderDays()}
         {loading ? (
-          <div className="text-center py-12">
+          <div className="text-center py-8 sm:py-12">
             <div className="inline-block h-8 w-8 animate-spin rounded-full border-3 border-indigo-500 border-t-transparent"></div>
             <p className="mt-3 text-sm text-gray-500">Loading calendar...</p>
           </div>
@@ -297,26 +314,6 @@ const Calendar: React.FC = () => {
         )}
       </div>
       
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex items-center p-3 bg-white rounded-xl shadow-sm">
-          <div className="h-4 w-4 bg-indigo-100 rounded mr-3"></div>
-          <span className="text-sm text-gray-600">Selected Date</span>
-        </div>
-        <div className="flex items-center p-3 bg-white rounded-xl shadow-sm">
-          <div className="relative h-4 w-4 mr-3">
-            <div className="absolute inset-0 bg-white rounded"></div>
-            <div className="absolute inset-0 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center">
-              <span className="text-white text-[8px] font-medium">1</span>
-            </div>
-          </div>
-          <span className="text-sm text-gray-600">Reservations Count</span>
-        </div>
-        <div className="flex items-center p-3 bg-white rounded-xl shadow-sm">
-          <div className="h-4 w-4 bg-gray-100 rounded mr-3"></div>
-          <span className="text-sm text-gray-600">Available Date</span>
-        </div>
-      </div>
-
       {!loading && renderReservationsTable()}
     </div>
   );

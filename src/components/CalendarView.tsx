@@ -17,13 +17,7 @@ import {
   subDays,
   parseISO,
 } from 'date-fns';
-
-interface Reservation {
-  id: number;
-  date: string;
-  startTime: string;
-  endTime: string;
-}
+import reservationApi, { Reservation } from '../services/api';
 
 type ViewType = 'month' | 'week' | 'day';
 
@@ -33,26 +27,27 @@ const CalendarView: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(dateParam ? parseISO(dateParam) : new Date());
   const [viewType, setViewType] = useState<ViewType>('month');
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // In a real app, you would fetch reservations from an API
-    // For demo purposes, we'll use mock data
-    const mockReservations: Reservation[] = [
-      {
-        id: 1,
-        date: '2023-09-15',
-        startTime: '09:00',
-        endTime: '12:00',
-      },
-      {
-        id: 2,
-        date: '2023-09-20',
-        startTime: '14:00',
-        endTime: '16:00',
-      },
-    ];
+    const fetchReservations = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('Fetching all reservations for calendar view');
+        const data = await reservationApi.getAll();
+        console.log('Fetched reservations for calendar:', data);
+        setReservations(data);
+      } catch (err) {
+        console.error('Failed to fetch reservations for calendar:', err);
+        setError('Failed to load reservation data');
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    setReservations(mockReservations);
+    fetchReservations();
   }, []);
 
   const handleDateClick = (date: Date) => {
@@ -148,7 +143,7 @@ const CalendarView: React.FC = () => {
             <div className="font-medium">{format(day, 'EEEE, MMMM d')}</div>
             {getReservationsForDate(day).map(reservation => (
               <div key={reservation.id} className="mt-2 p-2 bg-primary-100 rounded">
-                <div className="text-sm font-medium">{reservation.startTime} - {reservation.endTime}</div>
+                <div className="text-sm font-medium">{reservation.start_time} - {reservation.end_time}</div>
               </div>
             ))}
           </div>
@@ -170,8 +165,8 @@ const CalendarView: React.FC = () => {
           {hours.map(hour => {
             const timeString = `${hour.toString().padStart(2, '0')}:00`;
             const hasReservationAtHour = dayReservations.some(reservation => {
-              const startHour = parseInt(reservation.startTime.split(':')[0]);
-              const endHour = parseInt(reservation.endTime.split(':')[0]);
+              const startHour = parseInt(reservation.start_time.split(':')[0]);
+              const endHour = parseInt(reservation.end_time.split(':')[0]);
               return hour >= startHour && hour < endHour;
             });
             
@@ -184,14 +179,14 @@ const CalendarView: React.FC = () => {
                 <div className="w-20 text-gray-500">{format(new Date().setHours(hour, 0, 0), 'h:mm a')}</div>
                 <div className="flex-grow">
                   {dayReservations.map(reservation => {
-                    const startHour = parseInt(reservation.startTime.split(':')[0]);
-                    const endHour = parseInt(reservation.endTime.split(':')[0]);
+                    const startHour = parseInt(reservation.start_time.split(':')[0]);
+                    const endHour = parseInt(reservation.end_time.split(':')[0]);
                     
                     if (hour >= startHour && hour < endHour) {
                       return (
                         <div key={reservation.id} className="p-2 bg-primary-100 rounded">
                           <div className="text-sm font-medium">
-                            {reservation.startTime} - {reservation.endTime}
+                            {reservation.start_time} - {reservation.end_time}
                           </div>
                         </div>
                       );
@@ -249,19 +244,19 @@ const CalendarView: React.FC = () => {
         <h1 className="text-2xl font-bold text-gray-900">Car Reservation Calendar</h1>
         <div className="flex space-x-2">
           <button
-            className={`px-3 py-1 rounded-md ${viewType === 'month' ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 rounded ${viewType === 'month' ? 'bg-primary-600 text-white' : 'bg-gray-200'}`}
             onClick={() => setViewType('month')}
           >
             Month
           </button>
           <button
-            className={`px-3 py-1 rounded-md ${viewType === 'week' ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 rounded ${viewType === 'week' ? 'bg-primary-600 text-white' : 'bg-gray-200'}`}
             onClick={() => setViewType('week')}
           >
             Week
           </button>
           <button
-            className={`px-3 py-1 rounded-md ${viewType === 'day' ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 rounded ${viewType === 'day' ? 'bg-primary-600 text-white' : 'bg-gray-200'}`}
             onClick={() => setViewType('day')}
           >
             Day
@@ -269,31 +264,44 @@ const CalendarView: React.FC = () => {
         </div>
       </div>
       
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={navigatePrevious}
-            className="p-2 rounded-full hover:bg-gray-100"
-          >
-            <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h2 className="text-lg font-medium">{renderCalendarHeader()}</h2>
-          <button
-            onClick={navigateNext}
-            className="p-2 rounded-full hover:bg-gray-100"
-          >
-            <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-        
-        {viewType === 'month' && renderMonthView()}
-        {viewType === 'week' && renderWeekView()}
-        {viewType === 'day' && renderDayView()}
+      <div className="flex justify-between items-center mb-4">
+        <button
+          className="p-2 rounded-full hover:bg-gray-100"
+          onClick={navigatePrevious}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <h2 className="text-xl font-medium">{renderCalendarHeader()}</h2>
+        <button
+          className="p-2 rounded-full hover:bg-gray-100"
+          onClick={navigateNext}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
+      
+      {error && (
+        <div className="p-4 mb-4 bg-red-50 border border-red-100 rounded-xl text-red-600">
+          {error}
+        </div>
+      )}
+      
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary-500 border-r-transparent"></div>
+          <p className="mt-2 text-gray-500">Loading calendar data...</p>
+        </div>
+      ) : (
+        <div className="bg-white p-4 rounded-lg shadow">
+          {viewType === 'month' && renderMonthView()}
+          {viewType === 'week' && renderWeekView()}
+          {viewType === 'day' && renderDayView()}
+        </div>
+      )}
     </div>
   );
 };

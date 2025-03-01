@@ -27,8 +27,37 @@ authApi.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  console.log('Auth API Request:', {
+    url: config.baseURL + config.url,
+    method: config.method,
+    headers: config.headers,
+    data: config.data
+  });
   return config;
 });
+
+// Add response interceptor for logging
+authApi.interceptors.response.use(
+  (response) => {
+    console.log('Auth API Response:', {
+      url: response.config.url,
+      status: response.status,
+      data: response.data,
+      headers: response.headers
+    });
+    return response;
+  },
+  (error) => {
+    console.error('Auth API Error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+      headers: error.response?.headers
+    });
+    return Promise.reject(error);
+  }
+);
 
 export const register = async (email: string, password: string): Promise<RegisterResponse> => {
   try {
